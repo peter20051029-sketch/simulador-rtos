@@ -1,0 +1,198 @@
+/*
+ * Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
+ * Click nbfs://nbhost/SystemFileSystem/Templates/Classes/Class.java to edit this template
+ */
+package proyecto_sistop;
+
+/**
+ *
+ * @author Peter
+ */
+
+import java.util.concurrent.Semaphore;
+
+public class NucleoSimulador implements Runnable {
+
+    private volatile boolean corriendo;
+
+    private long tick;
+    private int duracionCicloMs;
+
+    private final ListaEnlazada<BCP> colaNuevo;
+    private final ListaEnlazada<BCP> colaListo;
+    private final ListaEnlazada<BCP> colaBloqueado;
+    private final ListaEnlazada<BCP> colaTerminado;
+
+    private final Semaphore mutexColas; // mutex
+
+    private final GeneradorProcesos generador;
+    private PoliticaPlanificacion politica;
+
+    private BCP ejecutando;
+    private int quantumRestante; // RR
+
+    public NucleoSimulador(int duracionCicloMs) {
+        this.duracionCicloMs = duracionCicloMs;
+        this.tick = 0;
+        this.corriendo = false;
+
+        this.colaNuevo = new ListaEnlazada<>();
+        this.colaListo = new ListaEnlazada<>();
+        this.colaBloqueado = new ListaEnlazada<>();
+        this.colaTerminado = new ListaEnlazada<>();
+
+        this.mutexColas = new Semaphore(1, true);
+
+        this.generador = new GeneradorProcesos();
+        this.politica = new PlanificadorFCFS();
+
+        this.ejecutando = null;
+        this.quantumRestante = 0;
+    }
+
+    public void setDuracionCicloMs(int duracionCicloMs) {
+        this.duracionCicloMs = duracionCicloMs;
+    }
+
+    public void setPolitica(PoliticaPlanificacion politica) {
+        try {
+            mutexColas.acquire();
+            this.politica = politica;
+            if (!(politica instanceof PlanificadorRR)) {
+                quantumRestante = 0;
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } finally {
+            mutexColas.release();
+        }
+    }
+
+    public void iniciar() {
+        this.corriendo = true;
+    }
+
+    public void detener() {
+        this.corriendo = false;
+    }
+
+    public void cargarInicial(int cantidad) {
+        try {
+            mutexColas.acquire();
+            generador.generar(cantidad, tick);
+            ListaEnlazada<BCP> nuevos = generador.obtener();
+            while (!nuevos.estaVacia()) {
+                colaNuevo.encolar(nuevos.desencolar());
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } finally {
+            mutexColas.release();
+        }
+    }
+
+    private void admitirNuevosAListos() {
+        while (!colaNuevo.estaVacia()) {
+            BCP p = colaNuevo.desencolar();
+            p.setEstado(EstadoProceso.LISTO);
+            colaListo.encolar(p);
+        }
+    }
+
+    private void despacharSiHaceFalta() {
+        if (ejecutando != null) return;
+
+        BCP siguiente = politica.elegirSiguiente(colaListo);
+        if (siguiente == null) return;
+
+        siguiente.setEstado(EstadoProceso.EJECUCION);
+        ejecutando = siguiente;
+
+        if (politica instanceof PlanificadorRR rr) {
+            quantumRestante = rr.getQuantum();
+        } else {
+            quantumRestante = 0;
+        }
+    }
+
+    private void aplicarRRSiToca() {
+        if (!(politica instanceof PlanificadorRR)) return;
+        if (ejecutando == null) return;
+
+        quantumRestante--;
+
+        if (quantumRestante <= 0 && ejecutando.getInstruccionesRestantes() > 0) {
+            ejecutando.setEstado(EstadoProceso.LISTO);
+            colaListo.encolar(ejecutando);
+            ejecutando = null;
+        }
+    }
+
+    private void ejecutarUnCiclo() {
+        if (ejecutando == null) return;
+
+        ejecutando.setContadorPrograma(ejecutando.getContadorPrograma() + 1);
+        ejecutando.setRegistroDireccionMemoria(ejecutando.getRegistroDireccionMemoria() + 1);
+        ejecutando.decrementarInstruccion();
+
+        if (ejecutando.getInstruccionesRestantes() <= 0) {
+            ejecutando.setEstado(EstadoProceso.TERMINADO);
+            colaTerminado.encolar(ejecutando);
+            ejecutando = null;
+        }
+    }
+
+    private void imprimirEstado() {
+        System.out.println("\nTick: " + tick + " | " + politica.nombre());
+
+        if (ejecutando == null) {
+            System.out.println("Ejecutando: Ninguno");
+        } else {
+            String extra = "";
+            if (politica instanceof PlanificadorRR) extra = " | qRest=" + quantumRestante;
+            System.out.println("Ejecutando: " + ejecutando.getNombre()
+                    + " | rest=" + ejecutando.getInstruccionesRestantes()
+                    + " | limite=" + ejecutando.getTiempoLimite()
+                    + extra);
+        }
+
+        System.out.println("Nuevo=" + colaNuevo.tamano()
+                + " | Listo=" + colaListo.tamano()
+                + " | Bloqueado=" + colaBloqueado.tamano()
+                + " | Terminado=" + colaTerminado.tamano());
+    }
+
+    @Override
+    public void run() {
+        while (true) {
+            if (corriendo) {
+                try {
+                    mutexColas.acquire();
+
+                    tick++;
+
+                    admitirNuevosAListos();
+                    despacharSiHaceFalta();
+
+                    ejecutarUnCiclo();
+                    aplicarRRSiToca();
+
+                    imprimirEstado();
+
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return;
+                } finally {
+                    mutexColas.release();
+                }
+            }
+
+            try {
+                Thread.sleep(duracionCicloMs);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+        }
+    }
+}
