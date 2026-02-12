@@ -31,4 +31,3 @@ public class PlanificadorRR implements PoliticaPlanificacion {
         return "RR(q=" + quantum + ")";
     }
 }
-
