@@ -129,18 +129,30 @@ public class NucleoSimulador implements Runnable {
     }
 
     private void ejecutarUnCiclo() {
-        if (ejecutando == null) return;
+    if (ejecutando == null) return;
 
-        ejecutando.setContadorPrograma(ejecutando.getContadorPrograma() + 1);
-        ejecutando.setRegistroDireccionMemoria(ejecutando.getRegistroDireccionMemoria() + 1);
-        ejecutando.decrementarInstruccion();
-
-        if (ejecutando.getInstruccionesRestantes() <= 0) {
-            ejecutando.setEstado(EstadoProceso.TERMINADO);
-            colaTerminado.encolar(ejecutando);
+    // chance simple de bloquearse (si tiene E/S pendiente)
+    if (ejecutando.getRafagaESRestante() > 0) {
+        int r = (int)(Math.random() * 100);
+        if (r < 15) { // 15%
+            ejecutando.setEstado(EstadoProceso.BLOQUEADO);
+            colaBloqueado.encolar(ejecutando);
             ejecutando = null;
+            return;
         }
     }
+
+    ejecutando.setContadorPrograma(ejecutando.getContadorPrograma() + 1);
+    ejecutando.setRegistroDireccionMemoria(ejecutando.getRegistroDireccionMemoria() + 1);
+    ejecutando.decrementarInstruccion();
+
+    if (ejecutando.getInstruccionesRestantes() <= 0) {
+        ejecutando.setEstado(EstadoProceso.TERMINADO);
+        colaTerminado.encolar(ejecutando);
+        ejecutando = null;
+    }
+}
+
 
     private void imprimirEstado() {
         System.out.println("\nTick: " + tick + " | " + politica.nombre());
@@ -161,6 +173,26 @@ public class NucleoSimulador implements Runnable {
                 + " | Bloqueado=" + colaBloqueado.tamano()
                 + " | Terminado=" + colaTerminado.tamano());
     }
+    private void avanzarBloqueados() {
+    int n = colaBloqueado.tamano();
+    for (int i = 0; i < n; i++) {
+        BCP p = colaBloqueado.desencolar();
+        if (p == null) break;
+
+        if (p.getRafagaESRestante() > 0) {
+            p.setRafagaESRestante(p.getRafagaESRestante() - 1);
+        }
+
+        if (p.getRafagaESRestante() <= 0) {
+            p.setEstado(EstadoProceso.LISTO);
+            colaListo.encolar(p);
+        } else {
+            colaBloqueado.encolar(p);
+        }
+    }
+}
+
+
 
     @Override
     public void run() {
@@ -172,12 +204,14 @@ public class NucleoSimulador implements Runnable {
                     tick++;
 
                     admitirNuevosAListos();
+                    avanzarBloqueados();     // <-- NUEVO
                     despacharSiHaceFalta();
 
                     ejecutarUnCiclo();
                     aplicarRRSiToca();
 
                     imprimirEstado();
+
 
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();

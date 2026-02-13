@@ -8,6 +8,16 @@ package proyecto_sistop;
  *
  * @author Peter
  */
-public class PlanificadorFCFS {
-    
+
+public class PlanificadorFCFS implements PoliticaPlanificacion {
+
+    @Override
+    public BCP elegirSiguiente(ListaEnlazada<BCP> colaListos) {
+        return colaListos.desencolar();
+    }
+
+    @Override
+    public String nombre() {
+        return "FCFS";
+    }
 }
