@@ -11,10 +11,11 @@ package proyecto_sistop;
 
 import java.util.concurrent.Semaphore;
 
+
 public class NucleoSimulador implements Runnable {
 
     private volatile boolean corriendo;
-
+    
     private long tick;
     private int duracionCicloMs;
 
@@ -22,6 +23,9 @@ public class NucleoSimulador implements Runnable {
     private final ListaEnlazada<BCP> colaListo;
     private final ListaEnlazada<BCP> colaBloqueado;
     private final ListaEnlazada<BCP> colaTerminado;
+    private final ListaEnlazada<BCP> colaEmergencia;
+    private int contadorEmergencias;
+
 
     private final Semaphore mutexColas; // mutex
 
@@ -35,6 +39,9 @@ public class NucleoSimulador implements Runnable {
         this.duracionCicloMs = duracionCicloMs;
         this.tick = 0;
         this.corriendo = false;
+        this.colaEmergencia = new ListaEnlazada<>();
+        this.contadorEmergencias = 0;
+
 
         this.colaNuevo = new ListaEnlazada<>();
         this.colaListo = new ListaEnlazada<>();
@@ -53,6 +60,40 @@ public class NucleoSimulador implements Runnable {
     public void setDuracionCicloMs(int duracionCicloMs) {
         this.duracionCicloMs = duracionCicloMs;
     }
+    
+    public void dispararInterrupcion() {
+    try {
+        mutexColas.acquire();
+
+        contadorEmergencias++;
+        BCP emergencia = new BCP(
+                "EMERG-" + contadorEmergencias,
+                1,
+                tick + 50,
+                10,
+                0,
+                null
+        );
+
+        emergencia.setEstado(EstadoProceso.LISTO);
+        colaEmergencia.encolar(emergencia);
+
+        if (ejecutando != null) {
+            ejecutando.setEstado(EstadoProceso.LISTO);
+            colaListo.encolar(ejecutando);
+            ejecutando = null;
+            quantumRestante = 0;
+        }
+
+        System.out.println("\n*** INTERRUPCION: creada " + emergencia.getNombre() + " ***");
+
+    } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+    } finally {
+        mutexColas.release();
+    }
+}
+
 
     public void setPolitica(PoliticaPlanificacion politica) {
         try {
@@ -99,21 +140,29 @@ public class NucleoSimulador implements Runnable {
         }
     }
 
-    private void despacharSiHaceFalta() {
-        if (ejecutando != null) return;
+   private void despacharSiHaceFalta() {
+    if (ejecutando != null) return;
 
-        BCP siguiente = politica.elegirSiguiente(colaListo);
-        if (siguiente == null) return;
+    BCP siguiente = null;
 
-        siguiente.setEstado(EstadoProceso.EJECUCION);
-        ejecutando = siguiente;
-
-        if (politica instanceof PlanificadorRR rr) {
-            quantumRestante = rr.getQuantum();
-        } else {
-            quantumRestante = 0;
-        }
+    if (!colaEmergencia.estaVacia()) {
+        siguiente = colaEmergencia.desencolar();
+    } else {
+        siguiente = politica.elegirSiguiente(colaListo);
     }
+
+    if (siguiente == null) return;
+
+    siguiente.setEstado(EstadoProceso.EJECUCION);
+    ejecutando = siguiente;
+
+    if (politica instanceof PlanificadorRR rr) {
+        quantumRestante = rr.getQuantum();
+    } else {
+        quantumRestante = 0;
+    }
+}
+
 
     private void aplicarRRSiToca() {
         if (!(politica instanceof PlanificadorRR)) return;
@@ -169,9 +218,11 @@ public class NucleoSimulador implements Runnable {
         }
 
         System.out.println("Nuevo=" + colaNuevo.tamano()
-                + " | Listo=" + colaListo.tamano()
-                + " | Bloqueado=" + colaBloqueado.tamano()
-                + " | Terminado=" + colaTerminado.tamano());
+        + " | Listo=" + colaListo.tamano()
+        + " | Emerg=" + colaEmergencia.tamano()
+        + " | Bloqueado=" + colaBloqueado.tamano()
+        + " | Terminado=" + colaTerminado.tamano());
+
     }
     private void avanzarBloqueados() {
     int n = colaBloqueado.tamano();
