@@ -12,19 +12,25 @@ package proyecto_sistop;
 public class MainSimulador {
 
     public static void main(String[] args) throws InterruptedException {
+        NucleoSimulador sim = new NucleoSimulador(250);
+        sim.cargarInicial(10);
 
-        NucleoSimulador sim = new NucleoSimulador(300);
-        sim.cargarInicial(6);
-
-        Thread reloj = new Thread(sim);
-        reloj.start();
-
-        Thread hiloInterrupciones = new Thread(new GeneradorInterrupciones(sim));
-        hiloInterrupciones.start();
+        new Thread(sim).start();
+        new Thread(new GeneradorInterrupciones(sim)).start();
 
         sim.iniciar();
 
         Thread.sleep(3000);
+        sim.setPolitica(new PlanificadorEDF());
+
+        Thread.sleep(4000);
+        sim.setPolitica(new PlanificadorSRT());
+
+        Thread.sleep(4000);
+        sim.setPolitica(new PlanificadorPrioridad());
+
+        Thread.sleep(4000);
         sim.setPolitica(new PlanificadorRR(3));
     }
 }
+

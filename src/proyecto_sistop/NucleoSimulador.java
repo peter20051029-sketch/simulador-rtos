@@ -99,6 +99,7 @@ public class NucleoSimulador implements Runnable {
         try {
             mutexColas.acquire();
             this.politica = politica;
+            reordenarColaListos();
             if (!(politica instanceof PlanificadorRR)) {
                 quantumRestante = 0;
             }
@@ -108,11 +109,60 @@ public class NucleoSimulador implements Runnable {
             mutexColas.release();
         }
     }
+    private void reordenarColaListos() {
+    ListaEnlazada<BCP> tmp = new ListaEnlazada<>();
+    while (!colaListo.estaVacia()) {
+        tmp.encolar(colaListo.desencolar());
+    }
+    while (!tmp.estaVacia()) {
+        BCP p = tmp.desencolar();
+        insertarEnListosSegunPolitica(p);
+    }
+}
+
+    private void insertarEnListosSegunPolitica(BCP p) {
+    if (politica instanceof PlanificadorSRT) {
+        colaListo.insertarOrdenado(p, PlanificadorSRT.COMP);
+    } else if (politica instanceof PlanificadorPrioridad) {
+        colaListo.insertarOrdenado(p, PlanificadorPrioridad.COMP);
+    } else if (politica instanceof PlanificadorEDF) {
+        colaListo.insertarOrdenado(p, PlanificadorEDF.COMP);
+    } else {
+        colaListo.encolar(p);
+    }
+}
+
 
     public void iniciar() {
         this.corriendo = true;
     }
+    
+    private void preemptarSiCorresponde() {
+    if (ejecutando == null) return;
+    if (politica instanceof PlanificadorRR || politica instanceof PlanificadorFCFS) return;
 
+    BCP candidato = colaListo.verPrimero();
+    if (candidato == null) return;
+
+    boolean preemptar = false;
+
+    if (politica instanceof PlanificadorSRT) {
+        preemptar = candidato.getInstruccionesRestantes() < ejecutando.getInstruccionesRestantes();
+    } else if (politica instanceof PlanificadorPrioridad) {
+        preemptar = candidato.getPrioridad() < ejecutando.getPrioridad();
+    } else if (politica instanceof PlanificadorEDF) {
+        preemptar = candidato.getTiempoLimite() < ejecutando.getTiempoLimite();
+    }
+
+    if (preemptar) {
+        ejecutando.setEstado(EstadoProceso.LISTO);
+        insertarEnListosSegunPolitica(ejecutando);
+        ejecutando = null;
+        quantumRestante = 0;
+    }
+}
+   
+    
     public void detener() {
         this.corriendo = false;
     }
@@ -133,12 +183,13 @@ public class NucleoSimulador implements Runnable {
     }
 
     private void admitirNuevosAListos() {
-        while (!colaNuevo.estaVacia()) {
-            BCP p = colaNuevo.desencolar();
-            p.setEstado(EstadoProceso.LISTO);
-            colaListo.encolar(p);
-        }
+    while (!colaNuevo.estaVacia()) {
+        BCP p = colaNuevo.desencolar();
+        p.setEstado(EstadoProceso.LISTO);
+        insertarEnListosSegunPolitica(p);
     }
+}
+
 
    private void despacharSiHaceFalta() {
     if (ejecutando != null) return;
@@ -224,6 +275,7 @@ public class NucleoSimulador implements Runnable {
         + " | Terminado=" + colaTerminado.tamano());
 
     }
+    
     private void avanzarBloqueados() {
     int n = colaBloqueado.tamano();
     for (int i = 0; i < n; i++) {
@@ -236,7 +288,7 @@ public class NucleoSimulador implements Runnable {
 
         if (p.getRafagaESRestante() <= 0) {
             p.setEstado(EstadoProceso.LISTO);
-            colaListo.encolar(p);
+            insertarEnListosSegunPolitica(p);
         } else {
             colaBloqueado.encolar(p);
         }
@@ -252,16 +304,18 @@ public class NucleoSimulador implements Runnable {
                 try {
                     mutexColas.acquire();
 
-                    tick++;
+                   tick++;
 
                     admitirNuevosAListos();
-                    avanzarBloqueados();     // <-- NUEVO
+                    avanzarBloqueados();
+                    preemptarSiCorresponde();
                     despacharSiHaceFalta();
 
                     ejecutarUnCiclo();
                     aplicarRRSiToca();
 
                     imprimirEstado();
+
 
 
                 } catch (InterruptedException e) {
