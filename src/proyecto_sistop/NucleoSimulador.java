@@ -18,6 +18,11 @@ public class NucleoSimulador implements Runnable {
     
     private long tick;
     private int duracionCicloMs;
+    private final ListaEnlazada<BCP> colaListoSuspendido;
+    private final ListaEnlazada<BCP> colaBloqueadoSuspendido;
+
+    private final int MAX_EN_MEMORIA;
+
 
     private final ListaEnlazada<BCP> colaNuevo;
     private final ListaEnlazada<BCP> colaListo;
@@ -41,6 +46,10 @@ public class NucleoSimulador implements Runnable {
         this.corriendo = false;
         this.colaEmergencia = new ListaEnlazada<>();
         this.contadorEmergencias = 0;
+        this.colaListoSuspendido = new ListaEnlazada<>();
+        this.colaBloqueadoSuspendido = new ListaEnlazada<>();
+
+        this.MAX_EN_MEMORIA = 5; // cámbialo si quieres (o lo pasamos por constructor)
 
 
         this.colaNuevo = new ListaEnlazada<>();
@@ -109,6 +118,44 @@ public class NucleoSimulador implements Runnable {
             mutexColas.release();
         }
     }
+    private int procesosEnMemoria() {
+    int enCpu = (ejecutando == null) ? 0 : 1;
+    return colaListo.tamano() + colaBloqueado.tamano() + enCpu;
+}
+private void meterAListoO_Suspender(BCP p) {
+    if (procesosEnMemoria() < MAX_EN_MEMORIA) {
+        p.setEstado(EstadoProceso.LISTO);
+        insertarEnListosSegunPolitica(p);
+    } else {
+        p.setEstado(EstadoProceso.LISTO_SUSPENDIDO);
+        colaListoSuspendido.encolar(p);
+    }
+}
+private void meterABloqueadoO_Suspender(BCP p) {
+    if (procesosEnMemoria() < MAX_EN_MEMORIA) {
+        p.setEstado(EstadoProceso.BLOQUEADO);
+        colaBloqueado.encolar(p);
+    } else {
+        p.setEstado(EstadoProceso.BLOQUEADO_SUSPENDIDO);
+        colaBloqueadoSuspendido.encolar(p);
+    }
+}
+private void swapInSiHayEspacio() {
+    while (procesosEnMemoria() < MAX_EN_MEMORIA) {
+        if (!colaListoSuspendido.estaVacia()) {
+            BCP p = colaListoSuspendido.desencolar();
+            p.setEstado(EstadoProceso.LISTO);
+            insertarEnListosSegunPolitica(p);
+        } else if (!colaBloqueadoSuspendido.estaVacia()) {
+            BCP p = colaBloqueadoSuspendido.desencolar();
+            p.setEstado(EstadoProceso.BLOQUEADO);
+            colaBloqueado.encolar(p);
+        } else {
+            break;
+        }
+    }
+}
+
     private void reordenarColaListos() {
     ListaEnlazada<BCP> tmp = new ListaEnlazada<>();
     while (!colaListo.estaVacia()) {
@@ -182,13 +229,13 @@ public class NucleoSimulador implements Runnable {
         }
     }
 
-    private void admitirNuevosAListos() {
+   private void admitirNuevosAListos() {
     while (!colaNuevo.estaVacia()) {
         BCP p = colaNuevo.desencolar();
-        p.setEstado(EstadoProceso.LISTO);
-        insertarEnListosSegunPolitica(p);
+        meterAListoO_Suspender(p);
     }
 }
+
 
 
    private void despacharSiHaceFalta() {
@@ -236,9 +283,11 @@ public class NucleoSimulador implements Runnable {
         int r = (int)(Math.random() * 100);
         if (r < 15) { // 15%
             ejecutando.setEstado(EstadoProceso.BLOQUEADO);
-            colaBloqueado.encolar(ejecutando);
+            meterABloqueadoO_Suspender(ejecutando);
             ejecutando = null;
             return;
+
+            
         }
     }
 
@@ -270,9 +319,12 @@ public class NucleoSimulador implements Runnable {
 
         System.out.println("Nuevo=" + colaNuevo.tamano()
         + " | Listo=" + colaListo.tamano()
+        + " | ListoSusp=" + colaListoSuspendido.tamano()
         + " | Emerg=" + colaEmergencia.tamano()
         + " | Bloqueado=" + colaBloqueado.tamano()
+        + " | BloqSusp=" + colaBloqueadoSuspendido.tamano()
         + " | Terminado=" + colaTerminado.tamano());
+
 
     }
     
@@ -288,7 +340,7 @@ public class NucleoSimulador implements Runnable {
 
         if (p.getRafagaESRestante() <= 0) {
             p.setEstado(EstadoProceso.LISTO);
-            insertarEnListosSegunPolitica(p);
+            meterAListoO_Suspender(p);
         } else {
             colaBloqueado.encolar(p);
         }
@@ -313,7 +365,8 @@ public class NucleoSimulador implements Runnable {
 
                     ejecutarUnCiclo();
                     aplicarRRSiToca();
-
+                    
+                    swapInSiHayEspacio();
                     imprimirEstado();
 
 
