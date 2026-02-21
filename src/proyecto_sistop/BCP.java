@@ -2,16 +2,6 @@ package proyecto_sistop;
 
 import java.util.concurrent.atomic.AtomicInteger;
 
-/**
- * Representa el Bloque de Control de Proceso (BCP) para cada tarea en el
- * simulador. Contiene la información necesaria para el planificador y
- * para la visualización de los procesos en la interfaz gráfica.
- *
- * <p>En lugar del nombre en inglés PCB (Process Control Block), se emplea
- * la sigla BCP para reflejar la traducción al español. Las variables y
- * métodos también están nombrados en español para mejorar la coherencia
- * lingüística del código.</p>
- */
 public class BCP {
     /**
      * Contador atómico para generar identificadores únicos de proceso.
@@ -20,7 +10,7 @@ public class BCP {
 
     /** Identificador único del proceso. */
     private final int id;
-    /** Nombre del proceso (puede ser descriptivo). */
+    /** Nombre del proceso */
     private String nombre;
     /** Estado actual del proceso. */
     private EstadoProceso estado;
@@ -40,6 +30,8 @@ public class BCP {
     private int rafagaESRestante;
     /** Periodo de reactivación (para tareas periódicas), en ciclos de reloj. */
     private Integer periodo;
+    private long esperaAcumulada;
+    private long tickLlegada;
 
     /**
      * Crea un nuevo BCP con los parámetros indicados. El identificador se
@@ -65,9 +57,10 @@ public class BCP {
         this.contadorPrograma = 0;
         this.registroDireccionMemoria = 0;
         this.estado = EstadoProceso.NUEVO;
+        this.esperaAcumulada = 0;
+        this.tickLlegada = 0;
     }
 
-    // ==== Getters y setters ====
 
     /**
      * Devuelve el identificador único del proceso.
@@ -84,6 +77,11 @@ public class BCP {
     public String getNombre() {
         return nombre;
     }
+    public long getEsperaAcumulada() { return esperaAcumulada; }
+public void sumarEspera(long t) { this.esperaAcumulada += t; }
+
+public long getTickLlegada() { return tickLlegada; }
+public void setTickLlegada(long tickLlegada) { this.tickLlegada = tickLlegada; }
 
     /**
      * Establece un nuevo nombre para el proceso.
@@ -197,6 +195,15 @@ public class BCP {
     public int getInstruccionesRestantes() {
         return instruccionesRestantes;
     }
+    
+    // Permite ajustar instrucciones restantes (útil para tareas aleatorias en ejecución)
+public void setInstruccionesRestantes(int instruccionesRestantes) {
+    this.instruccionesRestantes = Math.max(0, instruccionesRestantes);
+    // Si alguien lo aumenta por encima del total, actualizo total para consistencia visual
+    if (this.instruccionesRestantes > this.instruccionesTotales) {
+        this.instruccionesTotales = this.instruccionesRestantes;
+    }
+}
 
     /**
      * Decrementa en uno el contador de instrucciones restantes.

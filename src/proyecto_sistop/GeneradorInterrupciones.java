@@ -24,7 +24,7 @@ public class GeneradorInterrupciones implements Runnable {
     public void run() {
         while (true) {
             try {
-                int esperaMs = random.nextInt(2500) + 1500; // 1.5s..4s
+                int esperaMs = random.nextInt(6000) + 10000;
                 Thread.sleep(esperaMs);
 
                 nucleo.dispararInterrupcion();
