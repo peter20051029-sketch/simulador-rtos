@@ -70,7 +70,7 @@ public class NucleoSimulador implements Runnable {
 
         this.colaListoSuspendido = new ListaEnlazada<>();
         this.colaBloqueadoSuspendido = new ListaEnlazada<>();
-        this.MAX_EN_MEMORIA = 15;
+        this.MAX_EN_MEMORIA = 25;
 
         this.colaNuevo = new ListaEnlazada<>();
         this.colaListo = new ListaEnlazada<>();
@@ -536,7 +536,7 @@ public class NucleoSimulador implements Runnable {
         }
     }
 
-    // ✅ ESTE MÉTODO FALTABA EN TU ARCHIVO (por eso daba error)
+    
     private void ejecutarUnCiclo() {
         if (ejecutando == null) return;
 
@@ -569,6 +569,7 @@ public class NucleoSimulador implements Runnable {
             colaTerminado.encolar(ejecutando);
             ejecutando = null;
         }
+        
     }
 
     private void vaciarCola(ListaEnlazada<BCP> cola) {
@@ -607,7 +608,7 @@ public class NucleoSimulador implements Runnable {
                     mutexColas.acquire();
                     tick++;
 
-                    // ===== KERNEL (SO): colas + planificación =====
+                    // KERNEL (SO): colas + planificación
                     modoKernel = true;
                     if (ejecutando != null) ticksCpuOcupada++;
 
@@ -619,13 +620,13 @@ public class NucleoSimulador implements Runnable {
 
                     if (listener != null) listener.accept(crearSnapshot());
 
-                    // ===== USUARIO: ejecutar 1 instrucción =====
+                    //USUARIO: ejecutar 1 instrucción
                     modoKernel = false;
                     ejecutarUnCiclo();
 
                     if (listener != null) listener.accept(crearSnapshot());
 
-                    // ===== KERNEL: RR + swap =====
+                    //  KERNEL: RR + swap 
                     modoKernel = true;
                     aplicarRRSiToca();
                     swapInSiHayEspacio();
