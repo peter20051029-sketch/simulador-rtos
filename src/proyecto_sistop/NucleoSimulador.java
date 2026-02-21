@@ -99,7 +99,7 @@ public class NucleoSimulador implements Runnable {
         this.duracionCicloMs = duracionCicloMs;
     }
 
-    // ===== NUEVO: activar/desactivar modo CSV =====
+    // activar/desactivar modo CSV
     public void setModoCSV(boolean activo) {
         try {
             mutexColas.acquire();
