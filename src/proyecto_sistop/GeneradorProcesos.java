@@ -25,13 +25,13 @@ public class GeneradorProcesos {
         for (int i = 1; i <= cantidad; i++) {
 
             String nombre = "P" + i;
-            int prioridad = random.nextInt(10) + 1;         // 1..10
-            int instrucciones = random.nextInt(191) + 10;   // 10..200
-            int rafagaES = random.nextInt(16);              // 0..15
+            int prioridad = random.nextInt(10) + 1;         
+            int instrucciones = random.nextInt(191) + 10;   
+            int rafagaES = random.nextInt(16);              
 
-            Integer periodo = null; // aperiódico
-            if (random.nextInt(100) < 20) {                 // 20%
-                periodo = random.nextInt(61) + 20;          // 20..80
+            Integer periodo = null; 
+            if (random.nextInt(100) < 20) {                 
+                periodo = random.nextInt(61) + 20;          
             }
 
             long tiempoLimite = tickActual + (random.nextInt(171) + 30); // 30..200
